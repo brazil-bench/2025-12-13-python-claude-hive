@@ -1,0 +1,17 @@
+# Brazilian Soccer MCP Server - Python Dependencies
+# Date: 2025-12-13
+# Purpose: Core dependencies for data loading and processing
+
+# No external dependencies required for Phase 1 - Data Layer
+# Using only Python standard library:
+# - csv (CSV parsing)
+# - datetime (date/time handling)
+# - pathlib (file path operations)
+# - typing (type hints)
+# - logging (error logging)
+# - dataclasses (data models)
+
+# Future phases may require:
+# pandas>=2.0.0  # For advanced data analysis (Phase 2)
+# numpy>=1.24.0  # For statistical computations (Phase 2)
+# mcp>=0.1.0     # For MCP server implementation (Phase 3)
