@@ -395,4 +395,25 @@ the sum of its parts.
 
 $ claude update
   $ claude --dangerously-skip-permissions /resume
-> 
+
+
+Fixed skipped tests 
+
+ Summary
+
+  | Before               | After                |
+  |----------------------|----------------------|
+  | 36 passed, 7 skipped | 43 passed, 0 skipped |
+
+  Fixes Applied:
+
+  1. Installed neo4j package (was missing)
+  2. Fixed testcontainers password configuration (testpassword)
+  3. Updated integration tests to use existing Neo4jClient methods:
+    - get_team() → get_team_statistics()
+    - get_matches_by_team() → get_head_to_head()
+
+  Test Breakdown:
+
+  - 31 BDD tests (data loading, team normalizer, query engine, cross-file, performance)
+  - 12 Neo4j tests (unit + integration with testcontainers)
