@@ -15,7 +15,7 @@ Brazilian team names appear in various formats across datasets:
 This normalizer provides consistent team identification across all datasets.
 """
 
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, List
 
 
 class TeamNormalizer:

@@ -26,11 +26,18 @@ from datetime import datetime
 from collections import defaultdict
 from difflib import get_close_matches
 
-from models import Match, Player
-from data_loader import DataLoader
-from statistics import (
-    TeamStats, HeadToHeadStats, Record, Standing, TeamGoalStats
-)
+try:
+    from .models import Match, Player
+    from .data_loader import DataLoader
+    from .statistics import (
+        TeamStats, HeadToHeadStats, Record, Standing, TeamGoalStats
+    )
+except ImportError:
+    from models import Match, Player
+    from data_loader import DataLoader
+    from statistics import (
+        TeamStats, HeadToHeadStats, Record, Standing, TeamGoalStats
+    )
 
 
 class QueryEngine:
@@ -116,7 +123,7 @@ class QueryEngine:
             if (match.home_team == t2 or match.away_team == t2):
                 matches.append(match)
 
-        return sorted(matches, key=lambda m: m.date)
+        return sorted(matches, key=lambda m: m.datetime)
 
     def find_matches_by_team(
         self,
@@ -146,7 +153,7 @@ class QueryEngine:
         elif away_only:
             matches = [m for m in matches if m.away_team == team_name]
 
-        return sorted(matches, key=lambda m: m.date)
+        return sorted(matches, key=lambda m: m.datetime)
 
     def find_matches_by_date_range(
         self,
@@ -165,9 +172,9 @@ class QueryEngine:
         """
         matches = [
             m for m in self.data_loader.matches
-            if start <= m.date <= end
+            if start <= m.datetime <= end
         ]
-        return sorted(matches, key=lambda m: m.date)
+        return sorted(matches, key=lambda m: m.datetime)
 
     def find_matches_by_competition(self, competition: str) -> List[Match]:
         """
@@ -181,7 +188,7 @@ class QueryEngine:
         """
         return sorted(
             self.matches_by_competition.get(competition, []),
-            key=lambda m: m.date
+            key=lambda m: m.datetime
         )
 
     def find_matches_by_season(self, season: int) -> List[Match]:
@@ -196,7 +203,7 @@ class QueryEngine:
         """
         return sorted(
             self.matches_by_season.get(season, []),
-            key=lambda m: m.date
+            key=lambda m: m.datetime
         )
 
     # ==================== TEAM QUERIES ====================
@@ -244,8 +251,8 @@ class QueryEngine:
 
         for match in matches:
             is_home = match.home_team == team_name
-            team_goals = match.home_score if is_home else match.away_score
-            opponent_goals = match.away_score if is_home else match.home_score
+            team_goals = match.home_goals if is_home else match.away_goals
+            opponent_goals = match.away_goals if is_home else match.home_goals
 
             goals_for += team_goals
             goals_against += opponent_goals
@@ -307,8 +314,8 @@ class QueryEngine:
 
         for match in matches:
             is_t1_home = match.home_team == t1
-            t1_score = match.home_score if is_t1_home else match.away_score
-            t2_score = match.away_score if is_t1_home else match.home_score
+            t1_score = match.home_goals if is_t1_home else match.away_goals
+            t2_score = match.away_goals if is_t1_home else match.home_goals
 
             t1_goals += t1_score
             t2_goals += t2_score
@@ -359,12 +366,12 @@ class QueryEngine:
         goals_for = goals_against = 0
 
         for match in matches:
-            goals_for += match.home_score
-            goals_against += match.away_score
+            goals_for += match.home_goals
+            goals_against += match.away_goals
 
-            if match.home_score > match.away_score:
+            if match.home_goals > match.away_goals:
                 wins += 1
-            elif match.home_score == match.away_score:
+            elif match.home_goals == match.away_goals:
                 draws += 1
             else:
                 losses += 1
@@ -402,10 +409,10 @@ class QueryEngine:
         team_goals: Dict[str, Dict[str, int]] = defaultdict(lambda: {'goals': 0, 'matches': 0})
 
         for match in self.matches_by_season.get(season, []):
-            team_goals[match.home_team]['goals'] += match.home_score
+            team_goals[match.home_team]['goals'] += match.home_goals
             team_goals[match.home_team]['matches'] += 1
 
-            team_goals[match.away_team]['goals'] += match.away_score
+            team_goals[match.away_team]['goals'] += match.away_goals
             team_goals[match.away_team]['matches'] += 1
 
         rankings = [
@@ -542,21 +549,21 @@ class QueryEngine:
             # Home team
             home_record = team_records[match.home_team]
             home_record['matches'] += 1
-            home_record['gf'] += match.home_score
-            home_record['ga'] += match.away_score
+            home_record['gf'] += match.home_goals
+            home_record['ga'] += match.away_goals
 
             # Away team
             away_record = team_records[match.away_team]
             away_record['matches'] += 1
-            away_record['gf'] += match.away_score
-            away_record['ga'] += match.home_score
+            away_record['gf'] += match.away_goals
+            away_record['ga'] += match.home_goals
 
             # Determine winner
-            if match.home_score > match.away_score:
+            if match.home_goals > match.away_goals:
                 home_record['wins'] += 1
                 home_record['points'] += 3
                 away_record['losses'] += 1
-            elif match.away_score > match.home_score:
+            elif match.away_goals > match.home_goals:
                 away_record['wins'] += 1
                 away_record['points'] += 3
                 home_record['losses'] += 1
@@ -616,7 +623,7 @@ class QueryEngine:
 
         return sorted(
             matches,
-            key=lambda m: abs(m.home_score - m.away_score),
+            key=lambda m: abs(m.home_goals - m.away_goals),
             reverse=True
         )[:limit]
 
@@ -646,5 +653,5 @@ class QueryEngine:
         if not matches:
             return 0.0
 
-        total_goals = sum(m.home_score + m.away_score for m in matches)
+        total_goals = sum(m.home_goals + m.away_goals for m in matches)
         return total_goals / len(matches)
