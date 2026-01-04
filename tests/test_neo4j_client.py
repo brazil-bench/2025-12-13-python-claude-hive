@@ -4,11 +4,11 @@ Brazilian Soccer MCP - Neo4j Client Tests
 CONTEXT:
 Comprehensive test suite for Neo4jClient class. Tests schema creation,
 data import, graph queries, and error handling. Uses pytest fixtures
-for test isolation and mock data generation.
+for test isolation and testcontainers for self-contained integration tests.
 
 DESIGN:
 - Unit tests for individual methods
-- Integration tests for full workflows
+- Integration tests using testcontainers (self-contained)
 - Mock data for consistent testing
 - Proper setup/teardown for test isolation
 - Error case coverage
@@ -18,20 +18,31 @@ USAGE:
 
 AUTHOR: Coder Agent - Brazilian Soccer MCP Hive Mind
 PHASE: 3 - Neo4j Knowledge Graph
+ISSUE: #7 - Integration tests must be self-contained using testcontainers
 """
 
 import pytest
 from typing import Dict, Any, List
 from datetime import datetime
+import os
 
-# Mock Neo4j if not installed
+# Check if Neo4j package is available
 try:
     from neo4j.exceptions import ServiceUnavailable, AuthError
+    import neo4j
     NEO4J_AVAILABLE = True
 except ImportError:
     NEO4J_AVAILABLE = False
     ServiceUnavailable = Exception
     AuthError = Exception
+
+# Check if testcontainers is available
+try:
+    from testcontainers.neo4j import Neo4jContainer
+    TESTCONTAINERS_AVAILABLE = True
+except ImportError:
+    TESTCONTAINERS_AVAILABLE = False
+    Neo4jContainer = None
 
 # ============================================================================
 # TEST FIXTURES
@@ -101,6 +112,64 @@ def mock_match_data() -> List[Dict[str, Any]]:
         }
     ]
 
+
+@pytest.fixture(scope="session")
+def neo4j_container():
+    """
+    Session-scoped fixture that starts a Neo4j container for integration tests.
+
+    This fixture uses testcontainers to automatically start and stop a Neo4j
+    database instance, making tests self-contained and reproducible.
+
+    The container is shared across all tests in the session for efficiency.
+    """
+    if not TESTCONTAINERS_AVAILABLE:
+        pytest.skip("testcontainers not installed - run: pip install testcontainers[neo4j]")
+
+    # Check if Docker is available
+    try:
+        import docker
+        client = docker.from_env()
+        client.ping()
+    except Exception:
+        pytest.skip("Docker not available for testcontainers")
+
+    # Start Neo4j container
+    with Neo4jContainer("neo4j:5") as neo4j:
+        yield neo4j
+
+
+@pytest.fixture
+def neo4j_client_container(neo4j_container):
+    """
+    Fixture that provides a Neo4jClient connected to the testcontainer.
+
+    Each test gets a fresh client connection. The database is cleared
+    after each test to ensure isolation.
+    """
+    from src.neo4j_client import Neo4jClient
+
+    # Get connection details from container
+    uri = neo4j_container.get_connection_url()
+
+    # Create client
+    client = Neo4jClient(
+        uri=uri,
+        user="neo4j",
+        password="test"  # Default testcontainer password
+    )
+
+    yield client
+
+    # Cleanup: clear database after each test
+    try:
+        client.clear_database()
+    except Exception:
+        pass
+    finally:
+        client.close()
+
+
 # ============================================================================
 # UNIT TESTS
 # ============================================================================
@@ -157,34 +226,28 @@ class TestNeo4jClient:
         # Ensure no SQL injection risks
         assert "'{" not in FIND_COMMON_OPPONENTS  # No string interpolation
 
+
 # ============================================================================
-# INTEGRATION TESTS (Require Running Neo4j)
+# INTEGRATION TESTS (Self-Contained with Testcontainers)
 # ============================================================================
 
 @pytest.mark.integration
-@pytest.mark.skipif(not NEO4J_AVAILABLE, reason="Neo4j package not installed")
+@pytest.mark.skipif(
+    not (NEO4J_AVAILABLE and TESTCONTAINERS_AVAILABLE),
+    reason="Neo4j package or testcontainers not installed"
+)
 class TestNeo4jIntegration:
-    """Integration tests requiring a running Neo4j instance."""
+    """
+    Integration tests using testcontainers for self-contained Neo4j testing.
 
-    @pytest.fixture
-    def client(self):
-        """Create test client (requires NEO4J_TEST_URI env var)."""
-        import os
-        from src.neo4j_client import Neo4jClient
+    These tests automatically start a Neo4j container, run tests, and
+    clean up - no external Neo4j instance required.
+    """
 
-        uri = os.getenv("NEO4J_TEST_URI", "bolt://localhost:7687")
-        user = os.getenv("NEO4J_TEST_USER", "neo4j")
-        password = os.getenv("NEO4J_TEST_PASSWORD", "password")
-
-        client = Neo4jClient(uri, user, password)
-        yield client
-
-        # Cleanup
-        client.clear_database()
-        client.close()
-
-    def test_full_import_workflow(self, client, mock_team_data):
+    def test_full_import_workflow(self, neo4j_client_container, mock_team_data):
         """Test complete data import workflow."""
+        client = neo4j_client_container
+
         # Create schema
         client.create_constraints()
         client.create_indexes()
@@ -196,6 +259,39 @@ class TestNeo4jIntegration:
         # Verify import
         stats = client.get_database_statistics()
         assert stats["nodes"].get("Team", 0) == len(mock_team_data)
+
+    def test_team_query(self, neo4j_client_container, mock_team_data):
+        """Test querying teams from the database."""
+        client = neo4j_client_container
+
+        # Import teams
+        client.import_teams(mock_team_data)
+
+        # Query team
+        team = client.get_team("flamengo")
+        assert team is not None
+        assert team["name"] == "Flamengo"
+
+    def test_match_import_and_query(
+        self,
+        neo4j_client_container,
+        mock_team_data,
+        mock_match_data
+    ):
+        """Test importing and querying matches."""
+        client = neo4j_client_container
+
+        # Import teams first (required for relationships)
+        client.import_teams(mock_team_data)
+
+        # Import matches
+        count = client.import_matches(mock_match_data)
+        assert count == len(mock_match_data)
+
+        # Query matches
+        matches = client.get_matches_by_team("flamengo")
+        assert len(matches) >= 1
+
 
 # ============================================================================
 # CONFIGURATION TESTS
@@ -241,6 +337,7 @@ class TestNeo4jConfiguration:
         assert not is_valid
         assert error is not None
 
+
 # ============================================================================
 # SCHEMA TESTS
 # ============================================================================
@@ -281,6 +378,7 @@ class TestGraphSchema:
 
         assert len(summary["nodes"]["labels"]) >= 6
         assert len(summary["relationships"]["types"]) >= 4
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

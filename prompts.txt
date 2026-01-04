@@ -395,4 +395,4 @@ the sum of its parts.
 
 $ claude update
   $ claude --dangerously-skip-permissions /resume
-> Fix all open issues. Run: gh issue list to see them, be sure to avoid async bdd, as this doesn't work with pytest-bdd 
+> 
